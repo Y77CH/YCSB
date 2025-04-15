@@ -20,7 +20,6 @@ package site.ycsb.db.seaweed;
 
 import seaweedfs.client.FilerProto;
 import seaweedfs.client.FilerClient;
-import seaweedfs.client.FilerGrpcClient;
 import seaweedfs.client.SeaweedRead;
 import seaweedfs.client.SeaweedWrite;
 import site.ycsb.ByteIterator;
@@ -32,6 +31,7 @@ import site.ycsb.StringByteIterator;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.io.Writer;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.HashMap;
@@ -65,7 +65,6 @@ public class SeaweedClient extends DB {
   protected static final ObjectMapper MAPPER = new ObjectMapper();
 
   private FilerClient filerClient;
-  private FilerGrpcClient filerGrpcClient;
   private String filerHost;
   private int filerPort;
   private String folder;
@@ -103,8 +102,7 @@ public class SeaweedClient extends DB {
     filerHost = getProperties().getProperty("seaweed.filerHost", "localhost");
     filerPort = Integer.parseInt(getProperties().getProperty("seaweed.filerPort", "8888"));
     folder = getProperties().getProperty("seaweed.folder", "/ycsb");
-    filerGrpcClient = new FilerGrpcClient(filerHost, filerPort+10000);
-    filerClient = new FilerClient(filerGrpcClient);
+    filerClient = new FilerClient(filerHost, filerPort+10000);
     filerClient.mkdirs(this.folder, 0755);
   }
 
@@ -208,9 +206,10 @@ public class SeaweedClient extends DB {
                               .setFileMode(0755)
               );
 
-      SeaweedWrite.writeData(entry, "000", this.filerGrpcClient, 0, jsonData, 0, jsonData.length);
+      SeaweedWrite.writeData(entry, "000", "", this.filerClient, 0, jsonData, 0, 
+                             jsonData.length, this.folder+"/"+tableName);
 
-      SeaweedWrite.writeMeta(this.filerGrpcClient, this.folder + "/" + tableName, entry);
+      SeaweedWrite.writeMeta(this.filerClient, this.folder + "/" + tableName, entry);
 
     } catch (Exception e) {
       LOG.error("Not possible to write the object {}", key, e);
@@ -247,11 +246,14 @@ public class SeaweedClient extends DB {
   protected void readOneEntry(
           FilerProto.Entry entry, String key, Set<String> fields, Map<String, ByteIterator> result) throws IOException {
     List<SeaweedRead.VisibleInterval> visibleIntervalList =
-        SeaweedRead.nonOverlappingVisibleIntervals(filerGrpcClient, entry.getChunksList());
-    int length = (int) SeaweedRead.totalSize(entry.getChunksList());
-    byte[] buffer = new byte[length];
-    SeaweedRead.read(this.filerGrpcClient, visibleIntervalList, 0, buffer, 0, buffer.length);
-    fromJson(new String(buffer, StandardCharsets.UTF_8), fields, result);
+        SeaweedRead.nonOverlappingVisibleIntervals(filerClient, entry.getChunksList());
+    long length = SeaweedRead.totalSize(entry.getChunksList());
+    ByteBuffer byteBuffer = ByteBuffer.allocate((int) length);
+    SeaweedRead.read(this.filerClient, visibleIntervalList, 0L, byteBuffer, length);
+
+    byte[] bytes = new byte[byteBuffer.remaining()];
+    byteBuffer.get(bytes);
+    fromJson(new String(bytes, StandardCharsets.UTF_8), fields, result);
   }
 
   /**
@@ -318,3 +320,4 @@ public class SeaweedClient extends DB {
   }
 
 }
+
