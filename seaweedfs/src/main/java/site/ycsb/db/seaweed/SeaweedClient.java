@@ -32,6 +32,8 @@ import java.io.IOException;
 import java.io.StringWriter;
 import java.io.Writer;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.HashMap;
@@ -250,10 +252,10 @@ public class SeaweedClient extends DB {
     long length = SeaweedRead.totalSize(entry.getChunksList());
     ByteBuffer byteBuffer = ByteBuffer.allocate((int) length);
     SeaweedRead.read(this.filerClient, visibleIntervalList, 0L, byteBuffer, length);
-
-    byte[] bytes = new byte[byteBuffer.remaining()];
-    byteBuffer.get(bytes);
-    fromJson(new String(bytes, StandardCharsets.UTF_8), fields, result);
+    byteBuffer.flip();
+    Charset charset = StandardCharsets.UTF_8;
+    CharBuffer charBuffer = charset.decode(byteBuffer);
+    fromJson(charBuffer.toString(), fields, result);
   }
 
   /**
